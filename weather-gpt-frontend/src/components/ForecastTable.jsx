@@ -53,7 +53,7 @@ export default function ForecastTable({
 
           <tbody>
 
-            {forecast.map((day, index) => {
+            {forecast.slice(0, 7).map((day, index) => {
 
               const dayData = day.day || {}
 
