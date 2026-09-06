@@ -1,5 +1,6 @@
 import os
 import requests
+import time
 from dotenv import load_dotenv
 from datetime import datetime
 
@@ -16,38 +17,88 @@ BASE_URL = "https://api.weatherapi.com/v1/forecast.json"
 # OPEN-METEO — 7 DAY FORECAST
 # =========================================================
 
+# Cache Open-Meteo forecast in memory
+forecast_cache = {}
+FORECAST_CACHE_SECONDS = 600
+
+
 def get_7_day_forecast(latitude, longitude):
+
+    # Create a unique cache key for this location
+    cache_key = (
+        round(float(latitude), 4),
+        round(float(longitude), 4)
+    )
+
+    # Return cached data if it is still fresh
+    if cache_key in forecast_cache:
+
+        cached_data, cached_time = forecast_cache[cache_key]
+
+        if time.time() - cached_time < FORECAST_CACHE_SECONDS:
+            print("Using cached Open-Meteo forecast")
+            return cached_data
 
     url = "https://api.open-meteo.com/v1/forecast"
 
     params = {
         "latitude": latitude,
         "longitude": longitude,
-       "daily": (
-    "weather_code,"
-    "temperature_2m_max,"
-    "temperature_2m_min,"
-    "precipitation_probability_max,"
-    "wind_speed_10m_max,"
-    "relative_humidity_2m_mean,"
-    "surface_pressure_mean,"
-    "sunrise,"
-    "sunset"
-),
+        "daily": (
+            "weather_code,"
+            "temperature_2m_max,"
+            "temperature_2m_min,"
+            "precipitation_probability_max,"
+            "wind_speed_10m_max,"
+            "relative_humidity_2m_mean,"
+            "surface_pressure_mean,"
+            "sunrise,"
+            "sunset"
+        ),
         "forecast_days": 14,
         "timezone": "auto",
         "wind_speed_unit": "kmh",
     }
 
-    response = requests.get(
-        url,
-        params=params,
-        timeout=10
+    # Retry a few times if Open-Meteo temporarily rate-limits us
+    for attempt in range(3):
+
+        response = requests.get(
+            url,
+            params=params,
+            timeout=15
+        )
+
+        if response.status_code == 429:
+
+            wait_time = 2 ** attempt
+
+            print(
+                f"Open-Meteo rate limited. "
+                f"Retrying in {wait_time} seconds..."
+            )
+
+            time.sleep(wait_time)
+            continue
+
+        response.raise_for_status()
+
+        daily_data = response.json()["daily"]
+
+        # Save successful result in cache
+        forecast_cache[cache_key] = (
+            daily_data,
+            time.time()
+        )
+
+        print("Fetched fresh 14-day Open-Meteo forecast")
+
+        return daily_data
+
+    # If all retries receive 429
+    raise Exception(
+        "Open-Meteo rate limit reached after multiple retries."
     )
-
-    response.raise_for_status()
-
-    return response.json()["daily"]
 
 
 # =========================================================
