@@ -1,0 +1,9 @@
+weather-gpt-env/
+node_modules/
+.env
+__pycache__/
+weather-gpt-backend - Backup working/
+weather-gpt-frontend - Backup working/
+package-lock.json
+weather-gpt-backend - Backup*/ 
+weather-gpt-frontend - Backup*/ 
