@@ -57,8 +57,11 @@ export default function Analytics({ location }) {
 
 
         const response = await fetch(
-          `${API_BASE_URL}/api/weather?city=${encodeURIComponent(city)}`
-        )
+  `${API_BASE_URL}/api/weather?city=${encodeURIComponent(city)}&_=${Date.now()}`,
+  {
+    cache: 'no-store',
+  }
+)
 
 
         if (!response.ok) {

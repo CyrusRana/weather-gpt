@@ -1,137 +1,144 @@
 import os
 import requests
-import time
 from dotenv import load_dotenv
 from datetime import datetime
 
 from risk_engine import calculate_weather_risk
 
+
 load_dotenv()
 
+
 WEATHER_API_KEY = os.getenv("WEATHER_API_KEY")
+VISUAL_CROSSING_API_KEY = os.getenv("VISUAL_CROSSING_API_KEY")
 
 BASE_URL = "https://api.weatherapi.com/v1/forecast.json"
 
 
 # =========================================================
-# OPEN-METEO — 7 DAY FORECAST
+# VISUAL CROSSING — 14 DAY FORECAST
 # =========================================================
 
-# Cache Open-Meteo forecast in memory
-forecast_cache = {}
-FORECAST_CACHE_SECONDS = 600
+def get_long_forecast(latitude, longitude):
 
+    if not VISUAL_CROSSING_API_KEY:
+        raise Exception(
+            "VISUAL_CROSSING_API_KEY is missing. "
+            "Add it to the .env file."
+        )
 
-def get_7_day_forecast(latitude, longitude):
-
-    # Create a unique cache key for this location
-    cache_key = (
-        round(float(latitude), 4),
-        round(float(longitude), 4)
+    url = (
+        "https://weather.visualcrossing.com/"
+        "VisualCrossingWebServices/rest/services/timeline/"
+        f"{latitude},{longitude}"
     )
-
-    # Return cached data if it is still fresh
-    if cache_key in forecast_cache:
-
-        cached_data, cached_time = forecast_cache[cache_key]
-
-        if time.time() - cached_time < FORECAST_CACHE_SECONDS:
-            print("Using cached Open-Meteo forecast")
-            return cached_data
-
-    url = "https://api.open-meteo.com/v1/forecast"
 
     params = {
-        "latitude": latitude,
-        "longitude": longitude,
-        "daily": (
-            "weather_code,"
-            "temperature_2m_max,"
-            "temperature_2m_min,"
-            "precipitation_probability_max,"
-            "wind_speed_10m_max,"
-            "relative_humidity_2m_mean,"
-            "surface_pressure_mean,"
+        "unitGroup": "metric",
+        "include": "days",
+        "elements": (
+            "datetime,"
+            "tempmax,"
+            "tempmin,"
+            "precipprob,"
+            "windspeed,"
+            "humidity,"
+            "pressure,"
             "sunrise,"
-            "sunset"
+            "sunset,"
+            "conditions"
         ),
-        "forecast_days": 14,
-        "timezone": "auto",
-        "wind_speed_unit": "kmh",
+        "key": VISUAL_CROSSING_API_KEY,
+        "contentType": "json",
     }
 
-    # Retry a few times if Open-Meteo temporarily rate-limits us
-    for attempt in range(3):
-
-        response = requests.get(
-            url,
-            params=params,
-            timeout=15
-        )
-
-        if response.status_code == 429:
-
-            wait_time = 2 ** attempt
-
-            print(
-                f"Open-Meteo rate limited. "
-                f"Retrying in {wait_time} seconds..."
-            )
-
-            time.sleep(wait_time)
-            continue
-
-        response.raise_for_status()
-
-        daily_data = response.json()["daily"]
-
-        # Save successful result in cache
-        forecast_cache[cache_key] = (
-            daily_data,
-            time.time()
-        )
-
-        print("Fetched fresh 14-day Open-Meteo forecast")
-
-        return daily_data
-
-    # If all retries receive 429
-    raise Exception(
-        "Open-Meteo rate limit reached after multiple retries."
+    response = requests.get(
+        url,
+        params=params,
+        timeout=15
     )
 
+    if response.status_code != 200:
+        raise Exception(
+            f"Visual Crossing request failed: "
+            f"{response.status_code} - {response.text}"
+        )
 
-# =========================================================
-# OPEN-METEO WEATHER CODE
-# =========================================================
+    data = response.json()
 
-def weather_code_to_condition(code):
+    days = data.get("days", [])
 
-    if code == 0:
-        return "Clear"
+    forecast_days = []
 
-    if code in [1, 2]:
-        return "Partly Cloudy"
+    for day in days[:14]:
 
-    if code == 3:
-        return "Cloudy"
+        max_temp = day.get("tempmax") or 0
+        min_temp = day.get("tempmin") or 0
+        rain = day.get("precipprob") or 0
+        wind = day.get("windspeed") or 0
+        humidity = day.get("humidity") or 0
+        pressure = day.get("pressure") or 0
+        condition = day.get("conditions") or "Unknown"
 
-    if code in [45, 48]:
-        return "Fog"
+        forecast_days.append({
 
-    if code in [51, 53, 55, 56, 57]:
-        return "Drizzle"
+            # Date
+            "date": day.get("datetime"),
 
-    if code in [61, 63, 65, 66, 67, 80, 81, 82]:
-        return "Rain"
+            # Sunrise / Sunset
+            "astro": {
+                "sunrise": day.get("sunrise"),
+                "sunset": day.get("sunset"),
+            },
 
-    if code in [71, 73, 75, 77, 85, 86]:
-        return "Snow"
+            # WeatherAPI-compatible structure
+            "day": {
 
-    if code in [95, 96, 99]:
-        return "Thunderstorm"
+                "maxtemp_c": max_temp,
 
-    return "Cloudy"
+                "mintemp_c": min_temp,
+
+                "condition": {
+                    "text": condition
+                },
+
+                "daily_chance_of_rain": rain,
+
+                "maxwind_kph": wind,
+
+                "avghumidity": humidity,
+
+                "pressure_mb": pressure,
+            },
+
+            # =================================================
+            # FLAT VALUES FOR ANALYTICS
+            # =================================================
+
+            "maxTempC": max_temp,
+
+            "minTempC": min_temp,
+
+            "chanceOfRain": rain,
+
+            "windKph": wind,
+
+            "humidity": humidity,
+
+            "pressure": pressure,
+        })
+
+    if not forecast_days:
+        raise Exception(
+            "Visual Crossing returned no forecast data."
+        )
+
+    print(
+        f"Fetched {len(forecast_days)} day "
+        "Visual Crossing forecast"
+    )
+
+    return forecast_days
 
 
 # =========================================================
@@ -140,182 +147,136 @@ def weather_code_to_condition(code):
 
 def get_weather(city: str):
 
+    # =====================================================
+    # CHECK WEATHER API KEY
+    # =====================================================
+
     if not WEATHER_API_KEY:
 
         raise Exception(
-            "WEATHER_API_KEY is missing. Add it to the .env file."
+            "WEATHER_API_KEY is missing. "
+            "Add it to the .env file."
         )
+
 
     # =====================================================
     # WEATHERAPI REQUEST
     # =====================================================
 
     params = {
+
         "key": WEATHER_API_KEY,
+
         "q": city,
+
         "days": 3,
+
         "aqi": "no",
+
         "alerts": "yes",
     }
 
+
     response = requests.get(
+
         BASE_URL,
+
         params=params,
+
         timeout=10
     )
+
+
+    # =====================================================
+    # WEATHERAPI ERROR HANDLING
+    # =====================================================
 
     if response.status_code != 200:
 
         try:
+
             error_data = response.json()
+
         except Exception:
+
             error_data = {}
 
+
         raise Exception(
+
             error_data.get(
                 "error",
                 {}
             ).get(
+
                 "message",
+
                 "Weather API request failed"
             )
         )
 
+
     data = response.json()
-
-    location = data["location"]
-    current = data["current"]
-
-    latitude = location["lat"]
-    longitude = location["lon"]
-
-    # Keep WeatherAPI forecast separately.
-    # We need this for hourly forecast and Plan My Day.
-    weatherapi_forecast_days = data["forecast"]["forecastday"]
 
 
     # =====================================================
-    # 7-DAY FORECAST
+    # LOCATION + CURRENT WEATHER
+    # =====================================================
+
+    location = data["location"]
+
+    current = data["current"]
+
+
+    latitude = location["lat"]
+
+    longitude = location["lon"]
+
+
+    # =====================================================
+    # KEEP WEATHERAPI FORECAST
+    # =====================================================
+    #
+    # We still need WeatherAPI forecast for:
+    # - Hourly forecast
+    # - Plan My Day
+    # - Other existing features
+    #
+    # WeatherAPI provides 3 days here.
+    # Visual Crossing provides the long forecast.
+    # =====================================================
+
+    weatherapi_forecast_days = (
+        data["forecast"]["forecastday"]
+    )
+
+
+    # =====================================================
+    # 14-DAY FORECAST
     # =====================================================
 
     try:
 
-        daily_data = get_7_day_forecast(
+        forecast_days = get_long_forecast(
             latitude,
             longitude
         )
 
-        forecast_days = []
-
-        for i in range(
-            len(daily_data["time"])
-        ):
-
-            forecast_days.append({
-
-    "date": daily_data["time"][i],
-
-    "astro": {
-        "sunrise": daily_data["sunrise"][i],
-        "sunset": daily_data["sunset"][i],
-    },
-
-    "day": {
-
-        "maxtemp_c": (
-            daily_data[
-                "temperature_2m_max"
-            ][i]
-        ),
-
-        "mintemp_c": (
-            daily_data[
-                "temperature_2m_min"
-            ][i]
-        ),
-
-        "condition": {
-            "text":
-                weather_code_to_condition(
-                    daily_data[
-                        "weather_code"
-                    ][i]
-                )
-        },
-
-        "daily_chance_of_rain": (
-            daily_data[
-                "precipitation_probability_max"
-            ][i] or 0
-        ),
-
-        "maxwind_kph": (
-            daily_data[
-                "wind_speed_10m_max"
-            ][i] or 0
-        ),
-
-        "avghumidity": (
-            daily_data[
-                "relative_humidity_2m_mean"
-            ][i] or 0
-        ),
-
-        "pressure_mb": (
-            daily_data[
-                "surface_pressure_mean"
-            ][i] or 0
-        ),
-    },
-
-    # Flat values for Analytics
-    "maxTempC": (
-        daily_data[
-            "temperature_2m_max"
-        ][i]
-    ),
-
-    "minTempC": (
-        daily_data[
-            "temperature_2m_min"
-        ][i]
-    ),
-
-    "chanceOfRain": (
-        daily_data[
-            "precipitation_probability_max"
-        ][i] or 0
-    ),
-
-    "windKph": (
-        daily_data[
-            "wind_speed_10m_max"
-        ][i] or 0
-    ),
-
-    "humidity": (
-        daily_data[
-            "relative_humidity_2m_mean"
-        ][i] or 0
-    ),
-
-    "pressure": (
-        daily_data[
-            "surface_pressure_mean"
-        ][i] or 0
-    ),
-
-})
 
     except Exception as error:
 
         print(
-            "7-day forecast error:",
+            "Long forecast error:",
             error
         )
 
-        # Safe fallback.
-        # Dashboard will still work with WeatherAPI data.
+
+        # Safe fallback
+        #
+        # If Visual Crossing fails,
+        # the application will still work
+        # using WeatherAPI's available forecast.
+
         forecast_days = weatherapi_forecast_days
 
 
@@ -370,25 +331,35 @@ def get_weather(city: str):
     all_hours = []
 
 
-    # Today's WeatherAPI hours
+    # =====================================================
+    # TODAY'S WEATHERAPI HOURS
+    # =====================================================
 
     if len(weatherapi_forecast_days) > 0:
 
         all_hours.extend(
+
             weatherapi_forecast_days[0].get(
+
                 "hour",
+
                 []
             )
         )
 
 
-    # Tomorrow's WeatherAPI hours
+    # =====================================================
+    # TOMORROW'S WEATHERAPI HOURS
+    # =====================================================
 
     if len(weatherapi_forecast_days) > 1:
 
         all_hours.extend(
+
             weatherapi_forecast_days[1].get(
+
                 "hour",
+
                 []
             )
         )
@@ -399,11 +370,15 @@ def get_weather(city: str):
     # =====================================================
 
     current_epoch = int(
+
         current.get(
+
             "last_updated_epoch",
+
             0
         )
     )
+
 
     future_hours = [
 
@@ -412,10 +387,14 @@ def get_weather(city: str):
         for hour in all_hours
 
         if int(
+
             hour.get(
+
                 "time_epoch",
+
                 0
             )
+
         ) >= current_epoch
     ]
 
@@ -426,15 +405,23 @@ def get_weather(city: str):
 
     dashboard_hours = future_hours[:8]
 
+
     if (
+
         not dashboard_hours
+
         and len(weatherapi_forecast_days) > 1
+
     ):
 
         dashboard_hours = (
+
             weatherapi_forecast_days[1]
+
             .get(
+
                 "hour",
+
                 []
             )[:8]
         )
@@ -446,15 +433,23 @@ def get_weather(city: str):
 
     next_hours = future_hours[:12]
 
+
     if (
+
         not next_hours
+
         and len(weatherapi_forecast_days) > 1
+
     ):
 
         next_hours = (
+
             weatherapi_forecast_days[1]
+
             .get(
+
                 "hour",
+
                 []
             )[:12]
         )
@@ -470,49 +465,85 @@ def get_weather(city: str):
     for hour in next_hours:
 
         rain = float(
+
             hour.get(
+
                 "chance_of_rain",
+
                 0
-            ) or 0
+            )
+
+            or 0
         )
+
 
         temperature = float(
+
             hour.get(
+
                 "temp_c",
+
                 0
-            ) or 0
+            )
+
+            or 0
         )
+
 
         wind = float(
+
             hour.get(
+
                 "wind_kph",
+
                 0
-            ) or 0
+            )
+
+            or 0
         )
+
 
         humidity = float(
+
             hour.get(
+
                 "humidity",
+
                 0
-            ) or 0
+            )
+
+            or 0
         )
+
 
         uv = float(
+
             hour.get(
+
                 "uv",
+
                 0
-            ) or 0
+            )
+
+            or 0
         )
 
+
         condition = (
+
             hour.get(
+
                 "condition",
+
                 {}
             ).get(
+
                 "text",
+
                 ""
             )
         )
+
 
         condition_lower = condition.lower()
 
@@ -525,7 +556,9 @@ def get_weather(city: str):
 
         type_name = "good"
 
+
         text = (
+
             f"Good conditions around "
             f"{round(temperature)}°C with "
             f"{round(rain)}% rain probability."
@@ -537,15 +570,20 @@ def get_weather(city: str):
         # =================================================
 
         if (
+
             "thunder" in condition_lower
+
             or "storm" in condition_lower
+
         ):
 
             status = "AVOID"
 
             type_name = "avoid"
 
+
             text = (
+
                 "Thunderstorm risk. "
                 "Avoid exposed outdoor areas."
             )
@@ -561,7 +599,9 @@ def get_weather(city: str):
 
             type_name = "avoid"
 
+
             text = (
+
                 f"High rain probability "
                 f"({round(rain)}%). "
                 "Move outdoor plans indoors "
@@ -579,7 +619,9 @@ def get_weather(city: str):
 
             type_name = "caution"
 
+
             text = (
+
                 f"Rain probability is "
                 f"{round(rain)}%. "
                 "Keep an umbrella or rain "
@@ -597,7 +639,9 @@ def get_weather(city: str):
 
             type_name = "avoid"
 
+
             text = (
+
                 f"Very high temperature "
                 f"({round(temperature)}°C). "
                 "Avoid prolonged outdoor exposure."
@@ -614,7 +658,9 @@ def get_weather(city: str):
 
             type_name = "watch"
 
+
             text = (
+
                 f"Temperature is "
                 f"{round(temperature)}°C. "
                 "Stay hydrated and limit "
@@ -632,7 +678,9 @@ def get_weather(city: str):
 
             type_name = "watch"
 
+
             text = (
+
                 f"Wind speed is "
                 f"{round(wind)} km/h. "
                 "Be cautious with outdoor activities."
@@ -649,7 +697,9 @@ def get_weather(city: str):
 
             type_name = "watch"
 
+
             text = (
+
                 f"UV index is "
                 f"{round(uv)}. "
                 "Use sun protection and avoid "
@@ -662,15 +712,20 @@ def get_weather(city: str):
         # =================================================
 
         elif (
+
             humidity >= 80
+
             and temperature >= 28
+
         ):
 
             status = "WATCH"
 
             type_name = "watch"
 
+
             text = (
+
                 f"High humidity "
                 f"({round(humidity)}%). "
                 "Outdoor activity may feel uncomfortable."
@@ -682,23 +737,31 @@ def get_weather(city: str):
         # =================================================
 
         time_value = hour.get(
+
             "time",
+
             ""
         )
 
+
         hour_of_day = None
+
 
         try:
 
             if " " in time_value:
 
                 time_part = (
+
                     time_value.split(" ")[1]
                 )
 
+
                 hour_of_day = int(
+
                     time_part.split(":")[0]
                 )
+
 
         except Exception:
 
@@ -714,6 +777,7 @@ def get_weather(city: str):
             "time": time_value,
 
             "time_epoch": hour.get(
+
                 "time_epoch"
             ),
 
@@ -743,7 +807,8 @@ def get_weather(city: str):
     # FIND BEST WINDOW
     # =====================================================
 
-    # Only consider sensible outdoor/activity hours:
+    # Only consider sensible
+    # outdoor/activity hours:
     # 6 AM to 9 PM.
 
     activity_items = [
@@ -753,11 +818,17 @@ def get_weather(city: str):
         for item in timeline
 
         if (
+
             item.get("hour_of_day") is None
+
             or (
+
                 item.get("hour_of_day") >= 6
+
                 and item.get("hour_of_day") <= 21
+
             )
+
         )
     ]
 
@@ -773,22 +844,28 @@ def get_weather(city: str):
 
             current_window.append(item)
 
+
         else:
 
             if len(current_window) > len(best_window):
 
                 best_window = [
+
                     *current_window
                 ]
+
 
             current_window = []
 
 
-    # Check final window
+    # =====================================================
+    # CHECK FINAL WINDOW
+    # =====================================================
 
     if len(current_window) > len(best_window):
 
         best_window = [
+
             *current_window
         ]
 
@@ -797,12 +874,16 @@ def get_weather(city: str):
     # FALLBACK
     # =====================================================
 
-    # If every period has some caution/watch condition,
+    # If every period has some
+    # caution/watch condition,
     # choose the lowest-risk hour.
 
     if (
+
         not best_window
+
         and activity_items
+
     ):
 
         sorted_items = sorted(
@@ -816,15 +897,21 @@ def get_weather(city: str):
                 + item["wind"]
 
                 + max(
+
                     0,
+
                     item["temp_c"] - 28
+
                 ) * 3
 
                 + item["uv"] * 2
+
             )
         )
 
+
         best_window = [
+
             sorted_items[0]
         ]
 
@@ -839,18 +926,27 @@ def get_weather(city: str):
     if len(best_window) == 1:
 
         raw_time = (
+
             best_window[0]["time"]
+
             .split(" ")[-1]
         )
+
 
         try:
 
             best_window_text = datetime.strptime(
+
                 raw_time,
+
                 "%H:%M"
+
             ).strftime(
+
                 "%I:%M %p"
+
             ).lstrip("0")
+
 
         except Exception:
 
@@ -860,30 +956,48 @@ def get_weather(city: str):
     elif len(best_window) >= 2:
 
         start_time = (
+
             best_window[0]["time"]
+
             .split(" ")[-1]
         )
 
+
         end_time = (
+
             best_window[-1]["time"]
+
             .split(" ")[-1]
         )
+
 
         try:
 
             start_time = datetime.strptime(
+
                 start_time,
+
                 "%H:%M"
+
             ).strftime(
+
                 "%I:%M %p"
+
             ).lstrip("0")
 
+
             end_time = datetime.strptime(
+
                 end_time,
+
                 "%H:%M"
+
             ).strftime(
+
                 "%I:%M %p"
+
             ).lstrip("0")
+
 
         except Exception:
 
@@ -891,21 +1005,30 @@ def get_weather(city: str):
 
 
         best_window_text = (
+
             f"{start_time} – {end_time}"
         )
 
-            # =====================================================
+
+    # =====================================================
     # WEATHER DECISION / RISK ENGINE
     # =====================================================
 
     risk = calculate_weather_risk(
+
         current_weather,
+
         timeline,
+
         data.get(
+
             "alerts",
+
             {}
         ).get(
+
             "alert",
+
             []
         )
     )
@@ -922,26 +1045,31 @@ def get_weather(city: str):
         **current_weather,
 
 
-        # REAL 7-DAY FORECAST
+        # 14-DAY FORECAST
 
         "forecast": forecast_days,
 
 
         # HOURLY WEATHER
-        # HOURLY WEATHER
 
-"hourly": dashboard_hours,
+        "hourly": dashboard_hours,
 
-# FULL TODAY HOURLY DATA FOR ANALYTICS
 
-"analyticsHourly": (
-    weatherapi_forecast_days[0].get(
-        "hour",
-        []
-    )
-    if len(weatherapi_forecast_days) > 0
-    else []
-),
+        # FULL TODAY HOURLY DATA FOR ANALYTICS
+
+        "analyticsHourly": (
+
+            weatherapi_forecast_days[0].get(
+
+                "hour",
+
+                []
+            )
+
+            if len(weatherapi_forecast_days) > 0
+
+            else []
+        ),
 
 
         # PLAN MY DAY
@@ -949,7 +1077,7 @@ def get_weather(city: str):
         "timeline": timeline,
 
 
-        # SINGLE SOURCE OF TRUTH
+        # BEST WINDOW
 
         "best_window": best_window_text,
 
@@ -957,14 +1085,20 @@ def get_weather(city: str):
         # WEATHER ALERTS
 
         "alerts": (
+
             data.get(
+
                 "alerts",
+
                 {}
             ).get(
+
                 "alert",
+
                 []
             )
         ),
+
 
         # WEATHER DECISION ENGINE
 
