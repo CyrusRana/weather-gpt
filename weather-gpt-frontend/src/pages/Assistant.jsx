@@ -354,6 +354,7 @@ export default function Assistant({ location }) {
         {
           type: 'assistant',
           text: data.answer,
+          languageCode: language.code,
         },
 
       ])
@@ -420,11 +421,13 @@ export default function Assistant({ location }) {
   }
 
 
-  // ========================================================
+ 
+
+    // ========================================================
   // TEXT TO SPEECH
   // ========================================================
 
-  const speakText = (text) => {
+  const speakText = (text, selectedLanguageCode) => {
 
     if (!('speechSynthesis' in window)) {
 
@@ -433,15 +436,19 @@ export default function Assistant({ location }) {
       )
 
       return
-
     }
 
 
     // Stop current speech
-
     window.speechSynthesis.cancel()
 
 
+    // Use the language of the answer
+    const speechLanguage =
+      selectedLanguageCode || language.code
+
+
+    // Clean AI response
     const cleanText = text
       .replace(/#{1,6}\s?/g, '')
       .replace(/\*\*/g, '')
@@ -450,43 +457,133 @@ export default function Assistant({ location }) {
       .trim()
 
 
-    const utterance =
-      new SpeechSynthesisUtterance(cleanText)
+    // Split answer line by line
+    const lines = cleanText
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
 
 
-    utterance.lang = language.code
-
-    utterance.rate = 0.95
-
-    utterance.pitch = 1
-
-    utterance.volume = 1
-
-
-    utterance.onstart = () => {
-
-      setSpeaking(true)
-
+    if (lines.length === 0) {
+      return
     }
 
 
-    utterance.onend = () => {
-
-      setSpeaking(false)
-
-    }
+    // Get available browser voices
+    const voices =
+      window.speechSynthesis.getVoices()
 
 
-    utterance.onerror = () => {
-
-      setSpeaking(false)
-
-    }
-
-
-    window.speechSynthesis.speak(
-      utterance
+    // First try exact language
+    let selectedVoice = voices.find(
+      voice =>
+        voice.lang.toLowerCase() ===
+        speechLanguage.toLowerCase()
     )
+
+
+    // If exact voice is not available,
+    // try language prefix
+    if (!selectedVoice) {
+
+      const languagePrefix =
+        speechLanguage
+          .split('-')[0]
+          .toLowerCase()
+
+
+      selectedVoice = voices.find(
+        voice =>
+          voice.lang
+            .toLowerCase()
+            .startsWith(languagePrefix)
+      )
+    }
+
+
+    // Speak one line at a time
+    let currentLine = 0
+
+
+    const speakNextLine = () => {
+
+      if (currentLine >= lines.length) {
+
+        setSpeaking(false)
+
+        return
+      }
+
+
+      const utterance =
+        new SpeechSynthesisUtterance(
+          lines[currentLine]
+        )
+
+
+      // Use selected language
+      utterance.lang = speechLanguage
+
+
+      // Use matching browser voice
+      if (selectedVoice) {
+
+        utterance.voice = selectedVoice
+
+      }
+
+
+      utterance.rate = 0.95
+
+      utterance.pitch = 1
+
+      utterance.volume = 1
+
+
+      utterance.onstart = () => {
+
+        setSpeaking(true)
+
+      }
+
+
+      // When this line finishes,
+      // speak the next line
+      utterance.onend = () => {
+
+        currentLine += 1
+
+
+        setTimeout(() => {
+
+          speakNextLine()
+
+        }, 150)
+
+      }
+
+
+      utterance.onerror = (event) => {
+
+        console.error(
+          'Text-to-speech error:',
+          event
+        )
+
+        setSpeaking(false)
+
+      }
+
+
+      window.speechSynthesis.speak(
+        utterance
+      )
+
+    }
+
+
+    // Start speaking
+    speakNextLine()
 
   }
 
@@ -814,7 +911,8 @@ export default function Assistant({ location }) {
                       } else {
 
                         speakText(
-                          message.text
+                          message.text,
+                          message.languageCode
                         )
 
                       }
