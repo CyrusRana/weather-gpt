@@ -32,8 +32,8 @@ export default function App() {
     const fetchWeather = async () => {
       try {
         const response = await fetch(
-          `http://127.0.0.1:8000/api/weather?city=${encodeURIComponent(location.city)}`
-        )
+  `https://weather-gpt-zrn2.onrender.com/api/weather?city=${encodeURIComponent(location.city)}`
+)
 
         if (!response.ok) {
           throw new Error('Weather request failed')
