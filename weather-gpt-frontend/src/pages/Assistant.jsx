@@ -190,15 +190,18 @@ export default function Assistant({ location }) {
     // WHEN SPEECH IS RECEIVED
     // ======================================================
 
-    recognition.onresult = (event) => {
+   recognition.onresult = (event) => {
 
-      const transcript =
-        event.results[0][0].transcript
+  const transcript =
+    event.results[0][0].transcript
 
-      setQuestion(transcript)
+  setQuestion(transcript)
 
-    }
+  if (transcript.trim()) {
+    ask(transcript, language)
+  }
 
+}
 
     // ======================================================
     // RECOGNITION ENDS
@@ -295,7 +298,7 @@ export default function Assistant({ location }) {
   // ASK WEATHER GPT
   // ========================================================
 
-  const ask = async (q) => {
+  const ask = async (q, selectedLanguage = language) => {
 
     const userQuestion = q.trim()
 
@@ -339,7 +342,7 @@ export default function Assistant({ location }) {
       const data = await askWeatherQuestion(
         city,
         userQuestion,
-        language.aiName
+        selectedLanguage.aiName
       )
 
 
@@ -354,7 +357,7 @@ export default function Assistant({ location }) {
         {
           type: 'assistant',
           text: data.answer,
-          languageCode: language.code,
+          languageCode: selectedLanguage.code,
         },
 
       ])
@@ -469,36 +472,7 @@ export default function Assistant({ location }) {
     }
 
 
-    // Get available browser voices
-    const voices =
-      window.speechSynthesis.getVoices()
-
-
-    // First try exact language
-    let selectedVoice = voices.find(
-      voice =>
-        voice.lang.toLowerCase() ===
-        speechLanguage.toLowerCase()
-    )
-
-
-    // If exact voice is not available,
-    // try language prefix
-    if (!selectedVoice) {
-
-      const languagePrefix =
-        speechLanguage
-          .split('-')[0]
-          .toLowerCase()
-
-
-      selectedVoice = voices.find(
-        voice =>
-          voice.lang
-            .toLowerCase()
-            .startsWith(languagePrefix)
-      )
-    }
+    
 
 
     // Speak one line at a time
@@ -523,14 +497,6 @@ export default function Assistant({ location }) {
 
       // Use selected language
       utterance.lang = speechLanguage
-
-
-      // Use matching browser voice
-      if (selectedVoice) {
-
-        utterance.voice = selectedVoice
-
-      }
 
 
       utterance.rate = 0.95
