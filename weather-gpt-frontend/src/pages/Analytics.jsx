@@ -108,62 +108,70 @@ export default function Analytics({ location }) {
   const forecast =
     weather?.forecast || []
 
-
   const dailyData = useMemo(() => {
 
-    return forecast.map((day) => {
+  return forecast.map((day) => {
 
-      const date =
-        new Date(day.date)
+    const date =
+      new Date(day.date)
 
+    const dayData =
+      day.day || {}
 
-      return {
+    return {
 
-        day:
-          date.toLocaleDateString(
-            'en-IN',
-            {
-              weekday: 'short',
-            }
-          ),
+      day:
+        date.toLocaleDateString(
+          'en-IN',
+          {
+            weekday: 'short',
+          }
+        ),
 
-        date: day.date,
+      date: day.date,
 
-        maxTemp:
-          Number(
-            day.maxTempC ?? 0
-          ),
+      maxTemp:
+        Number(
+          dayData.maxtemp_c ?? 0
+        ),
 
-        minTemp:
-          Number(
-            day.minTempC ?? 0
-          ),
+      minTemp:
+        Number(
+          dayData.mintemp_c ?? 0
+        ),
 
-        rain:
-          Number(
-            day.chanceOfRain ?? 0
-          ),
+      rain:
+        Number(
+          dayData.daily_chance_of_rain ?? 0
+        ),
 
-        humidity:
-          Number(
-            day.humidity ?? 0
-          ),
+      humidity:
+  Number(
+    day.humidity ??
+    dayData.humidity ??
+    dayData.avghumidity ??
+    0
+  ),
 
-        wind:
-          Number(
-            day.windKph ?? 0
-          ),
+wind:
+  Number(
+    day.windKph ??
+    dayData.maxwind_kph ??
+    0
+  ),
 
-        pressure:
-          Number(
-            day.pressure ?? 0
-          ),
+pressure:
+  Number(
+    day.pressure ??
+    dayData.pressure ??
+    dayData.pressure_mb ??
+    0
+  ),
+    }
 
-      }
+  })
 
-    })
-
-  }, [forecast])
+}, [forecast])
 
 
   /* =====================================================
