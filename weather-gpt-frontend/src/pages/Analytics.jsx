@@ -131,19 +131,25 @@ export default function Analytics({ location }) {
       date: day.date,
 
       maxTemp:
-        Number(
-          dayData.maxtemp_c ?? 0
-        ),
+  Number(
+    day.maxTempC ??
+    dayData.maxtemp_c ??
+    0
+  ),
 
-      minTemp:
-        Number(
-          dayData.mintemp_c ?? 0
-        ),
+minTemp:
+  Number(
+    day.minTempC ??
+    dayData.mintemp_c ??
+    0
+  ),
 
-      rain:
-        Number(
-          dayData.daily_chance_of_rain ?? 0
-        ),
+rain:
+  Number(
+    day.chanceOfRain ??
+    dayData.daily_chance_of_rain ??
+    0
+  ),
 
       humidity:
   Number(
