@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   ChevronDown,
   ChevronUp,
@@ -12,168 +12,400 @@ export default function InsightCard({
 }) {
   const [open, setOpen] = useState(false)
 
-  // --------------------------------------------------
-  // LIVE WEATHER VALUES
-  // --------------------------------------------------
+  // ==================================================
+  // CURRENT LIVE WEATHER
+  // ==================================================
 
-  const temperature = Number(weather?.temperatureC ?? 0)
-  const humidity = Number(weather?.humidity ?? 0)
-  const wind = Number(weather?.wind ?? 0)
-  const uv = Number(weather?.uv ?? 0)
-
-  // Today's forecast
-  const today =
-    weather?.forecast?.[0]
-
-  const todayHours =
-    today?.hour || []
-
-  // Find highest rain probability today
-  const rainValues = todayHours.map(
-    hour => Number(hour.chance_of_rain ?? 0)
+  const temperature = Number(
+    weather?.temperatureC ?? 0
   )
 
-  const maxRain =
-    rainValues.length
-      ? Math.max(...rainValues)
-      : 0
+  const humidity = Number(
+    weather?.humidity ?? 0
+  )
 
-  // Find best outdoor window
-  const goodHours = todayHours.filter(hour => {
-    const rain = Number(hour.chance_of_rain ?? 0)
-    const temp = Number(hour.temp_c ?? 0)
-    const windSpeed = Number(hour.wind_kph ?? 0)
+  const wind = Number(
+    weather?.wind ?? 0
+  )
 
-    return (
-      rain < 30 &&
-      temp < 33 &&
-      windSpeed < 25
-    )
-  })
+  const uv = Number(
+    weather?.uv ?? 0
+  )
 
-  let bestWindow = 'No clear window'
+  const visibility = Number(
+    weather?.visibility ?? 0
+  )
 
-  if (goodHours.length >= 2) {
-    const first =
-      new Date(goodHours[0].time)
-        .toLocaleTimeString([], {
-          hour: 'numeric',
-        })
+  // ==================================================
+  // BACKEND TIMELINE
+  // ==================================================
+  // weather_service.py already creates this timeline
+  // using real WeatherAPI hourly data.
 
-    const last =
-      new Date(
-        goodHours[goodHours.length - 1].time
+  const timeline = Array.isArray(weather?.timeline)
+    ? weather.timeline
+    : []
+
+  // ==================================================
+  // REAL RAIN PROBABILITY
+  // ==================================================
+
+  const rainValues = timeline.map(
+    item =>
+      Number(
+        item?.chance_of_rain ?? 0
+      )
+  )
+
+  const maxRain = rainValues.length
+    ? Math.max(...rainValues)
+    : 0
+
+  // ==================================================
+  // OTHER FORECAST SIGNALS
+  // ==================================================
+
+  const forecastTemperatures = timeline.map(
+    item =>
+      Number(
+        item?.temp_c ?? 0
+      )
+  )
+
+  const forecastWinds = timeline.map(
+    item =>
+      Number(
+        item?.wind_kph ?? 0
+      )
+  )
+
+  const forecastHumidity = timeline.map(
+    item =>
+      Number(
+        item?.humidity ?? 0
+      )
+  )
+
+  const forecastUV = timeline.map(
+    item =>
+      Number(
+        item?.uv ?? 0
+      )
+  )
+
+  const maxTemperature =
+    forecastTemperatures.length
+      ? Math.max(...forecastTemperatures)
+      : temperature
+
+  const maxWind =
+    forecastWinds.length
+      ? Math.max(...forecastWinds)
+      : wind
+
+  const maxHumidity =
+    forecastHumidity.length
+      ? Math.max(...forecastHumidity)
+      : humidity
+
+  const maxUV =
+    forecastUV.length
+      ? Math.max(...forecastUV)
+      : uv
+
+  // ==================================================
+  // BACKEND RISK ENGINE RESULT
+  // ==================================================
+
+  const backendRisk = weather?.risk
+
+  const riskLevel =
+    backendRisk?.level || 'LOW'
+
+  const riskScore =
+    Number(backendRisk?.score ?? 0)
+
+  // ==================================================
+  // BEST WINDOW
+  // ==================================================
+
+  const bestWindow =
+    weather?.best_window ||
+    'No suitable window'
+
+  // ==================================================
+  // FIND RAIN PERIOD
+  // ==================================================
+
+  const highestRainHour = timeline.find(
+    item =>
+      Number(
+        item?.chance_of_rain ?? 0
+      ) === maxRain
+  )
+
+  let rainTime = ''
+
+  if (highestRainHour?.time) {
+    try {
+      rainTime = new Date(
+        highestRainHour.time
       ).toLocaleTimeString([], {
         hour: 'numeric',
+        minute: '2-digit',
       })
-
-    bestWindow = `${first}–${last}`
-  } else if (goodHours.length === 1) {
-    bestWindow =
-      new Date(goodHours[0].time)
-        .toLocaleTimeString([], {
-          hour: 'numeric',
-          minute: '2-digit',
-        })
-  }
-
-  // --------------------------------------------------
-  // RISK
-  // --------------------------------------------------
-
-  let risk = 'Low'
-
-  if (
-    maxRain >= 70 ||
-    wind >= 35 ||
-    temperature >= 38 ||
-    uv >= 9
-  ) {
-    risk = 'High'
-  } else if (
-    maxRain >= 40 ||
-    wind >= 25 ||
-    temperature >= 33 ||
-    uv >= 6
-  ) {
-    risk = 'Moderate'
-  }
-
-  // --------------------------------------------------
-  // MODE-SPECIFIC RECOMMENDATION
-  // --------------------------------------------------
-
-  let message = ''
-
-  if (mode === 'Outdoor Activity') {
-
-    if (maxRain >= 70) {
-      message =
-        'Outdoor activity is not recommended during the wetter periods today. Consider using the clearer part of the day instead.'
-    } else if (temperature >= 33) {
-      message =
-        'Outdoor activity is possible, but heat may become uncomfortable. Prefer the cooler part of the day and stay hydrated.'
-    } else if (maxRain >= 40) {
-      message =
-        'Outdoor activity is possible, but rain may interrupt your plans. Keep a rain layer available and use the better weather window.'
-    } else {
-      message =
-        'Conditions look generally favourable for outdoor activity today. Weather risk remains relatively manageable.'
-    }
-
-  } else if (mode === 'Travel') {
-
-    if (maxRain >= 70) {
-      message =
-        'Travel may become difficult during periods of heavier rain. Plan important travel around the better weather window.'
-    } else if (wind >= 30) {
-      message =
-        'Travel is possible, but stronger winds may affect conditions. Allow some extra travel time and monitor updates.'
-    } else {
-      message =
-        'Travel conditions look generally manageable today. Continue checking the forecast before longer journeys.'
-    }
-
-  } else if (mode === 'Daily Life') {
-
-    if (maxRain >= 70) {
-      message =
-        'Your routine is manageable, but rain may affect outdoor activities later today. Carry an umbrella or rain layer.'
-    } else if (temperature >= 33) {
-      message =
-        'Your routine looks manageable, although warmer conditions may make outdoor activities uncomfortable around the hotter hours.'
-    } else {
-      message =
-        'Your routine looks manageable today, with no major weather-related disruption expected from the current signals.'
-    }
-
-  } else if (mode === 'Agriculture') {
-
-    if (maxRain >= 60) {
-      message =
-        'Rain probability is elevated, so spraying may be less suitable. Review rainfall conditions before applying treatments.'
-    } else if (humidity >= 80) {
-      message =
-        'High humidity may affect agricultural operations. Consider local crop conditions and review the forecast before spraying.'
-    } else {
-      message =
-        'Current weather conditions appear reasonably suitable for routine agricultural activity, subject to crop-specific conditions.'
+    } catch {
+      rainTime = ''
     }
   }
 
-  // --------------------------------------------------
+  // ==================================================
+  // THUNDERSTORM
+  // ==================================================
+
+  const thunderstorm = timeline.some(
+    item => {
+      const condition =
+        typeof item?.condition === 'object'
+          ? item?.condition?.text || ''
+          : item?.condition || ''
+
+      return (
+        condition
+          .toLowerCase()
+          .includes('thunder')
+      )
+    }
+  )
+
+  // ==================================================
+  // MODE-SPECIFIC DECISION
+  // ==================================================
+
+  const decision = useMemo(() => {
+
+    let message = ''
+    let recommendation = ''
+
+    // ----------------------------------------------
+    // OUTDOOR ACTIVITY
+    // ----------------------------------------------
+
+    if (mode === 'Outdoor Activity') {
+
+      if (
+        riskLevel === 'SEVERE' ||
+        riskLevel === 'HIGH' ||
+        thunderstorm ||
+        maxRain >= 70
+      ) {
+
+        message =
+          `Outdoor activity has elevated weather risk today. Rain probability can reach ${Math.round(maxRain)}%${rainTime ? ` around ${rainTime}` : ''}.`
+
+        recommendation =
+          `Avoid exposed outdoor activity during the higher-risk period. Use the better window: ${bestWindow}.`
+
+      } else if (
+        riskLevel === 'MODERATE' ||
+        maxRain >= 40 ||
+        maxTemperature >= 33 ||
+        maxUV >= 8
+      ) {
+
+        message =
+          `Outdoor activity is possible, but some weather conditions may reduce comfort or safety.`
+
+        recommendation =
+          `Prefer the better weather window (${bestWindow}) and avoid peak heat, UV or rainfall periods.`
+
+      } else {
+
+        message =
+          `Conditions look generally favourable for outdoor activity, with maximum rain probability of ${Math.round(maxRain)}%.`
+
+        recommendation =
+          `Outdoor activity is generally suitable. The best available window is ${bestWindow}.`
+      }
+    }
+
+    // ----------------------------------------------
+    // TRAVEL
+    // ----------------------------------------------
+
+    else if (mode === 'Travel') {
+
+      if (
+        riskLevel === 'SEVERE' ||
+        maxRain >= 80 ||
+        maxWind >= 40 ||
+        visibility > 0 && visibility < 2
+      ) {
+
+        message =
+          `Travel conditions may become difficult because of elevated weather risk. Rain probability can reach ${Math.round(maxRain)}%.`
+
+        recommendation =
+          `Consider delaying non-essential travel during the higher-risk period and monitor weather conditions.`
+
+      } else if (
+        riskLevel === 'MODERATE' ||
+        maxRain >= 40 ||
+        maxWind >= 30 ||
+        visibility > 0 && visibility < 5
+      ) {
+
+        message =
+          `Travel is possible, but some forecast conditions may affect comfort or travel time.`
+
+        recommendation =
+          `Keep travel timing flexible and consider the better weather window: ${bestWindow}.`
+
+      } else {
+
+        message =
+          `Travel conditions look generally manageable, with maximum forecast rain probability of ${Math.round(maxRain)}%.`
+
+        recommendation =
+          `Travel is generally favourable. Continue monitoring the forecast before longer journeys.`
+      }
+    }
+
+    // ----------------------------------------------
+    // DAILY LIFE
+    // ----------------------------------------------
+
+    else if (mode === 'Daily Life') {
+
+      if (
+        riskLevel === 'SEVERE' ||
+        riskLevel === 'HIGH' ||
+        maxRain >= 70
+      ) {
+
+        message =
+          `Your daily routine may be affected because rain probability can reach ${Math.round(maxRain)}%.`
+
+        recommendation =
+          `Keep outdoor errands flexible and carry an umbrella or rain protection.`
+
+      } else if (
+        riskLevel === 'MODERATE' ||
+        maxRain >= 40 ||
+        maxTemperature >= 35 ||
+        maxWind >= 30
+      ) {
+
+        message =
+          `Your routine is manageable, but some periods may be less comfortable because of weather conditions.`
+
+        recommendation =
+          `Plan outdoor errands around the better weather window: ${bestWindow}.`
+
+      } else {
+
+        message =
+          `Your routine looks generally manageable, with no major weather disruption indicated by the current forecast.`
+
+        recommendation =
+          `Normal daily activities are generally suitable today.`
+      }
+    }
+
+    // ----------------------------------------------
+    // AGRICULTURE
+    // ----------------------------------------------
+
+    else if (mode === 'Agriculture') {
+
+      if (
+        riskLevel === 'SEVERE' ||
+        riskLevel === 'HIGH' ||
+        maxRain >= 70
+      ) {
+
+        message =
+          `Agricultural operations need caution because rain probability can reach ${Math.round(maxRain)}%.`
+
+        recommendation =
+          `Avoid spraying during the high-rain period and reassess field operations after conditions improve.`
+
+      } else if (
+        riskLevel === 'MODERATE' ||
+        maxRain >= 40 ||
+        maxHumidity >= 80 ||
+        maxWind >= 25
+      ) {
+
+        message =
+          `Agricultural activity may require timing adjustments because rainfall, humidity or wind conditions are elevated.`
+
+        recommendation =
+          `Check the rainfall window before spraying and schedule field work during calmer periods.`
+
+      } else {
+
+        message =
+          `Weather conditions appear relatively favourable for routine agricultural activity, with maximum rain probability of ${Math.round(maxRain)}%.`
+
+        recommendation =
+          `Routine field activity is generally suitable, subject to crop-specific conditions.`
+      }
+    }
+
+    return {
+      message,
+      recommendation,
+    }
+
+  }, [
+    mode,
+    riskLevel,
+    maxRain,
+    maxTemperature,
+    maxWind,
+    maxHumidity,
+    maxUV,
+    thunderstorm,
+    rainTime,
+    bestWindow,
+    visibility,
+  ])
+
+  // ==================================================
   // SIGNALS
-  // --------------------------------------------------
+  // ==================================================
 
   const signals = [
-    ['Rain probability', `${maxRain}%`],
-    ['Temperature', `${Math.round(temperature)}°C`],
-    ['Wind', `${Math.round(wind)} km/h`],
-    ['Risk', risk],
+    [
+      'Rain probability',
+      `${Math.round(maxRain)}%`,
+    ],
+
+    [
+      'Temperature',
+      `${Math.round(temperature)}°C`,
+    ],
+
+    [
+      'Wind',
+      `${Math.round(wind)} km/h`,
+    ],
+
+    [
+      'Risk',
+      riskLevel,
+    ],
   ]
+
+  // ==================================================
+  // UI
+  // ==================================================
 
   return (
     <section className="card insight">
+
+      {/* HEADER */}
 
       <div className="section-title">
 
@@ -193,31 +425,40 @@ export default function InsightCard({
 
       </div>
 
+      {/* INSIGHT */}
+
       <div className="insight-grid">
 
         <div>
 
           <div className="insight-message">
-            {message}
+            {decision.message}
           </div>
+
+          {/* SIGNALS */}
 
           <div className="signal-row">
 
-            {signals.map(([label, value]) => (
+            {signals.map(
+              ([label, value]) => (
 
-              <div
-                className="signal"
-                key={label}
-              >
-                {label}:{' '}
-                <strong>
-                  {value}
-                </strong>
-              </div>
+                <div
+                  className="signal"
+                  key={label}
+                >
+                  {label}:{' '}
 
-            ))}
+                  <strong>
+                    {value}
+                  </strong>
+                </div>
+
+              )
+            )}
 
           </div>
+
+          {/* ACTION CHIPS */}
 
           <div className="chips">
 
@@ -239,17 +480,41 @@ export default function InsightCard({
 
           </div>
 
-          <div className="demo-note">
-            ⓘ Based on live weather forecast signals
+          {/* DECISION */}
+
+          <div
+            className="demo-note"
+            style={{ marginTop: 12 }}
+          >
+            <strong>
+              {mode}:
+            </strong>{' '}
+            {decision.recommendation}
+          </div>
+
+          {/* BEST WINDOW */}
+
+          <div
+            className="demo-note"
+            style={{ marginTop: 8 }}
+          >
+            ⓘ Best weather window:{' '}
+            <strong>
+              {bestWindow}
+            </strong>
           </div>
 
         </div>
+
+        {/* WHY */}
 
         <div className="why">
 
           <button
             onClick={() =>
-              setOpen(previous => !previous)
+              setOpen(
+                previous => !previous
+              )
             }
           >
 
@@ -267,16 +532,76 @@ export default function InsightCard({
 
             <p>
 
-              This recommendation uses the
-              current temperature, humidity,
-              wind, UV index and today's
-              forecast rainfall probability.
+              The recommendation uses
+              real forecast signals from
+              the backend decision engine.
 
               {' '}
 
-              The system evaluates these
-              signals against the selected
-              planning mode:
+              Current conditions:
+
+              {' '}
+
+              <strong>
+                {Math.round(temperature)}°C
+              </strong>
+              {' · '}
+
+              <strong>
+                {Math.round(humidity)}% humidity
+              </strong>
+              {' · '}
+
+              <strong>
+                {Math.round(wind)} km/h wind
+              </strong>
+              {' · '}
+
+              <strong>
+                UV {Math.round(uv)}
+              </strong>
+
+              .
+
+              {' '}
+
+              The forecast reaches a maximum
+              rain probability of:
+
+              {' '}
+
+              <strong>
+                {Math.round(maxRain)}%
+              </strong>
+
+              .
+
+              {' '}
+
+              The backend risk engine currently
+              evaluates the overall weather as:
+
+              {' '}
+
+              <strong>
+                {riskLevel}
+              </strong>
+
+              {' '}
+
+              with a risk score of:
+
+              {' '}
+
+              <strong>
+                {riskScore}/100
+              </strong>
+
+              .
+
+              {' '}
+
+              The selected planning mode is:
 
               {' '}
 
@@ -284,11 +609,7 @@ export default function InsightCard({
                 {mode}
               </strong>
 
-              {' '}
-
-              and converts the weather
-              conditions into an actionable
-              recommendation.
+              .
 
             </p>
 
