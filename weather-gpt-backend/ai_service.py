@@ -195,21 +195,30 @@ Do not create or calculate a different BEST WINDOW.
         "max_tokens": 1000
     }
 
-    response = requests.post(
+        response = requests.post(
         OPENROUTER_URL,
         headers=headers,
         json=payload,
         timeout=60
     )
 
-    if response.status_code != 200:
+    print("========== OPENROUTER DEBUG ==========")
+    print("Status Code:", response.status_code)
+    print("Response:", response.text)
+    print("======================================")
 
+    if response.status_code != 200:
         raise Exception(
             f"OpenRouter error {response.status_code}: "
             f"{response.text}"
         )
 
     data = response.json()
+
+    if "choices" not in data or not data["choices"]:
+        raise Exception(
+            f"OpenRouter returned no choices: {data}"
+        )
 
     return data["choices"][0]["message"]["content"]
 
