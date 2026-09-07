@@ -195,7 +195,7 @@ Do not create or calculate a different BEST WINDOW.
         "max_tokens": 1000
     }
 
-        response = requests.post(
+    response = requests.post(
         OPENROUTER_URL,
         headers=headers,
         json=payload,
@@ -220,7 +220,7 @@ Do not create or calculate a different BEST WINDOW.
             f"OpenRouter returned no choices: {data}"
         )
 
-    return data["choices"][0]["message"]["content"]
+    return data["choices"][0]["message"]["content"]cd 
 
 
 # ==========================================================
