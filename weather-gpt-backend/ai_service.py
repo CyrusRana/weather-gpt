@@ -220,7 +220,7 @@ Do not create or calculate a different BEST WINDOW.
             f"OpenRouter returned no choices: {data}"
         )
 
-    return data["choices"][0]["message"]["content"]cd 
+    return data["choices"][0]["message"]["content"]
 
 
 # ==========================================================
