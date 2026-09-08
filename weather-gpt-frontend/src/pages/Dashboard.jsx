@@ -75,6 +75,11 @@ export default function Dashboard({
   const [aiLoading, setAiLoading] = useState(false)
   const [aiError, setAiError] = useState('')
 
+  // Live browser clock
+  const [currentTime, setCurrentTime] = useState(
+    new Date()
+  )
+
 
   const city = location?.city || 'Bengaluru'
 
@@ -117,6 +122,27 @@ export default function Dashboard({
     loadAiPlan()
 
   }, [city])
+
+
+  // ---------------------------------------------------------
+  // LIVE LOCAL CLOCK
+  // ---------------------------------------------------------
+
+  useEffect(() => {
+
+    const timer = setInterval(() => {
+
+      setCurrentTime(
+        new Date()
+      )
+
+    }, 1000)
+
+    return () => {
+      clearInterval(timer)
+    }
+
+  }, [])
 
 
   // ---------------------------------------------------------
@@ -169,12 +195,73 @@ export default function Dashboard({
 
   const firstDay = weather.forecast?.[0]
 
-  const sunrise =
-    firstDay?.astro?.sunrise || '--'
 
-  const sunset =
-    firstDay?.astro?.sunset || '--'
+  // ---------------------------------------------------------
+  // FORMAT API TIMES
+  // ---------------------------------------------------------
 
+  const formatTime = (value) => {
+
+    if (!value) {
+      return '--'
+    }
+
+    try {
+
+      const date = new Date(value)
+
+      if (Number.isNaN(date.getTime())) {
+        return value
+      }
+
+      return date.toLocaleTimeString(
+        'en-IN',
+        {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        }
+      )
+
+    } catch {
+
+      return value
+
+    }
+  }
+
+
+  // ---------------------------------------------------------
+  // SUNRISE / SUNSET
+  // ---------------------------------------------------------
+
+  const sunrise = formatTime(
+    firstDay?.astro?.sunrise
+  )
+
+  const sunset = formatTime(
+    firstDay?.astro?.sunset
+  )
+
+
+  // ---------------------------------------------------------
+  // LIVE CURRENT TIME
+  // ---------------------------------------------------------
+
+  const localTime =
+    currentTime.toLocaleTimeString(
+      'en-IN',
+      {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      }
+    )
+
+
+  // ---------------------------------------------------------
+  // WEATHER ICON
+  // ---------------------------------------------------------
 
   const conditionLower =
     (weather.condition || '').toLowerCase()
@@ -327,7 +414,7 @@ export default function Dashboard({
             </span>
 
             <strong>
-              {weather.localtime?.split(' ')[1] || '--'}
+              {localTime}
             </strong>
 
           </div>
@@ -343,21 +430,8 @@ export default function Dashboard({
       ===================================================== */}
 
       <Warning
-  warning={weather.alerts?.[0]}
-/>
-
-
- {/* <Warning
-  warning={
-    weather.alerts?.[0] || {
-      headline: 'Heavy Rain Warning',
-      severity: 'HIGH',
-      desc: 'Heavy rainfall is expected in the area. Conditions may affect outdoor activities and travel.',
-      instruction: 'Avoid unnecessary outdoor activity and follow official weather guidance.',
-    }
-  }
-/> */}
-
+        warning={weather.alerts?.[0]}
+      />
 
 
       {/* =====================================================
@@ -494,7 +568,7 @@ export default function Dashboard({
             className="demo-note"
             style={{ marginTop: 14 }}
           >
-            Last updated: {weather.lastUpdated}
+            Last updated: {formatTime(weather.lastUpdated)}
           </div>
 
         </section>

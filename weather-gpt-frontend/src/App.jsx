@@ -11,7 +11,7 @@ import Analytics from './pages/Analytics'
 import Locations from './pages/Locations'
 import Settings from './pages/Settings'
 
-import { getWeatherByCoordinates } from './lib/api'
+import { getWeather, getWeatherByCoordinates } from './lib/api'
 
 export default function App() {
   const [unit, setUnit] = useState('C')
@@ -31,15 +31,7 @@ export default function App() {
   useEffect(() => {
     const fetchWeather = async () => {
       try {
-        const response = await fetch(
-  `https://weather-gpt-zrn2.onrender.com/api/weather?city=${encodeURIComponent(location.city)}`
-)
-
-        if (!response.ok) {
-          throw new Error('Weather request failed')
-        }
-
-        const data = await response.json()
+        const data = await getWeather(location.city)
 
         setWeather(data)
 
