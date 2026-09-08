@@ -15,6 +15,10 @@ export default function Topbar({
   locating,
 }) {
 
+  // ---------------------------------------------------------
+  // LOCATION
+  // ---------------------------------------------------------
+
   // Use live API location when available
   const city =
     weather?.city ||
@@ -26,24 +30,43 @@ export default function Topbar({
     location?.country ||
     'India'
 
-  // WeatherAPI gives us the actual local date/time
-  const localTime = weather?.localtime
-    ? new Date(weather.localtime.replace(' ', 'T'))
-    : new Date()
 
-  const formattedDate = localTime.toLocaleDateString(
-    'en-IN',
-    {
-      weekday: 'long',
-      month: 'short',
-      day: 'numeric',
-    }
-  )
+  // ---------------------------------------------------------
+  // LOCATION TIMEZONE
+  // ---------------------------------------------------------
+
+  const timezone =
+    weather?.timezone ||
+    'Asia/Kolkata'
+
+
+  // ---------------------------------------------------------
+  // CURRENT LOCAL DATE
+  // ---------------------------------------------------------
+
+  const formattedDate =
+    new Intl.DateTimeFormat(
+      'en-IN',
+      {
+        weekday: 'long',
+        month: 'short',
+        day: 'numeric',
+        timeZone: timezone,
+      }
+    ).format(new Date())
+
+
+  // ---------------------------------------------------------
+  // UI
+  // ---------------------------------------------------------
 
   return (
     <header className="topbar">
 
       <div className="top-left">
+
+
+        {/* MOBILE MENU */}
 
         <button
           className="mobile-menu"
@@ -53,23 +76,37 @@ export default function Topbar({
           <Menu size={20} />
         </button>
 
+
+        {/* LOCATION */}
+
         <div className="location-control">
+
           <MapPin size={18} />
 
           <span>
             {city}, {country}
           </span>
+
         </div>
+
 
         <div className="divider" />
 
+
+        {/* DATE */}
+
         <div className="date-control">
+
           <CalendarDays size={18} />
 
           <span>
             {formattedDate}
           </span>
+
         </div>
+
+
+        {/* CURRENT LOCATION */}
 
         <button
           className="current-location-button"
@@ -77,6 +114,7 @@ export default function Topbar({
           disabled={locating}
           title="Use my current location"
         >
+
           <Navigation size={15} />
 
           <span>
@@ -84,9 +122,13 @@ export default function Topbar({
               ? 'Locating...'
               : 'Current Location'}
           </span>
+
         </button>
 
       </div>
+
+
+      {/* TEMPERATURE UNIT */}
 
       <div
         className="unit-toggle"
@@ -94,15 +136,28 @@ export default function Topbar({
       >
 
         <button
-          className={unit === 'C' ? 'active' : ''}
-          onClick={() => setUnit('C')}
+          className={
+            unit === 'C'
+              ? 'active'
+              : ''
+          }
+          onClick={() =>
+            setUnit('C')
+          }
         >
           °C
         </button>
 
+
         <button
-          className={unit === 'F' ? 'active' : ''}
-          onClick={() => setUnit('F')}
+          className={
+            unit === 'F'
+              ? 'active'
+              : ''
+          }
+          onClick={() =>
+            setUnit('F')
+          }
         >
           °F
         </button>
