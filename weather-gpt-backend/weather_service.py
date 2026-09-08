@@ -894,7 +894,7 @@ def get_weather(city: str):
 
                 item["chance_of_rain"]
 
-                + item["wind"]
+                + item["wind_kph"]
 
                 + max(
 
